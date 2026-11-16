@@ -57,6 +57,8 @@ ol.st{padding-left:1.3rem}ol.st li{margin:0 0 12px;padding-left:4px}
 .chips{display:flex;gap:8px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}.chips::-webkit-scrollbar{display:none}
 .chips button{white-space:nowrap;border-radius:999px;padding:7px 13px}
 .hero{display:flex;gap:14px;align-items:center}.hero img{width:64px;height:64px;border-radius:16px;flex:none}
+.er{position:relative}.acl{position:absolute;left:10px;right:10px;top:52px;z-index:6;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 28px rgba(0,0,0,.2);max-height:300px;overflow:auto}.acl:empty{display:none}
+.ai{display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;background:none;padding:11px 12px}.ai.on{color:var(--acc);font-weight:600}
 .tag{display:inline-block;font-size:.75rem;font-weight:600;padding:2px 9px;border-radius:999px;background:var(--bg);border:1px solid var(--line);color:var(--acc)}
 .cm{display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap}
 .kc{margin-left:auto;font-family:"Bricolage Grotesque",sans-serif;font-weight:700;color:var(--hl)}
@@ -81,7 +83,7 @@ let U=null,CB=[],C=null,R=[],KN={},OFF={},view="login",cur=null,sc=4,draft=null,
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt=n=>{n=+n;return n>=10?String(Math.round(n)):String(Math.round(n*10)/10).replace(".",",")};
-const LK=n=>DB[n.toLowerCase()]||KN[n.toLowerCase()];
+const LK=n=>DB[n.toLowerCase()]||KN[n.toLowerCase()]||BIG.get(n.toLowerCase());
 const can=()=>C&&C.role!=="reader";
 const msg=(t,ok)=>{const e=$("#msg");e.className=ok?"mute":"warn";e.textContent=t||""};
 const fail=e=>{msg("Errore: "+(e.message||e));console.error(e)};
@@ -176,7 +178,7 @@ function vEdit(){const d=draft;$("#app").innerHTML=`<h2>${d.isNew?"Nuova ricetta
 <p class="fl">Nome</p><input value="${esc(d.name)}" oninput="draft.name=this.value" placeholder="Es. Lasagne">
 <p class="fl">Portata</p><select onchange="draft.cat=this.value">${PORT.map(c=>`<option ${c===d.cat?"selected":""}>${c}</option>`).join("")}</select>
 <p class="fl">Porzioni della ricetta</p><input type="number" min="1" value="${d.servings}" oninput="draft.servings=+this.value||1">
-<h3>Ingredienti</h3>${d.ings.map((i,x)=>`<div class="er"><div class="g g3"><input list="dl" value="${esc(i.n)}" placeholder="Ingrediente" onchange="pick(${x},this.value)"><input type="number" step="any" value="${i.q||""}" placeholder="Quantità" oninput="draft.ings[${x}].q=+this.value">
+<h3>Ingredienti</h3>${d.ings.map((i,x)=>`<div class="er"><div class="acl" id="ac${x}"></div><div class="g g3"><input class="ni" id="ni${x}" autocomplete="off" value="${esc(i.n)}" placeholder="Cerca ingrediente…" oninput="ac(${x},this.value)" onchange="pick(${x},this.value)"><input type="number" step="any" value="${i.q||""}" placeholder="Quantità" oninput="draft.ings[${x}].q=+this.value">
 <select onchange="draft.ings[${x}].u=this.value">${["g","ml","cucchiaio","cucchiaino","tazza","pezzo"].map(u=>`<option ${u===i.u?"selected":""}>${u}</option>`).join("")}</select><button class="d" aria-label="Rimuovi" onclick="draft.ings.splice(${x},1);render()">✕</button></div>
 <p class="fl" style="margin:8px 0 2px">Valori per 100 g (si compilano da soli)</p><div class="g g5">${[["k","kcal"],["p","prot."],["c","carb."],["f","grassi"],["pc","g/pezzo"]].map(([k,l])=>`<div><label>${l}</label><input type="number" step="any" id="f${x}${k}" value="${i[k]||0}" oninput="draft.ings[${x}].${k}=+this.value"></div>`).join("")}</div><div id="st${x}" class="mute"></div></div>`).join("")}
 <button onclick="draft.ings.push(blank());render()">Aggiungi ingrediente</button>
@@ -184,14 +186,171 @@ function vEdit(){const d=draft;$("#app").innerHTML=`<h2>${d.isNew?"Nuova ricetta
 <button onclick="draft.steps.push({t:'',m:0});render()">Aggiungi passaggio</button>
 <div class="row" style="margin-top:22px"><button class="p" onclick="saveR()">Salva ricetta</button><button onclick="go(draft.isNew?'list':'view')">Annulla</button></div>`}
 function fillF(x,d){const i=draft.ings[x];[i.k,i.p,i.c,i.f,i.pc]=d;["k","p","c","f","pc"].forEach(k=>{const e=$("#f"+x+k);if(e)e.value=i[k]})}
-async function pick(x,v){const i=draft.ings[x];i.n=v.trim();if(!i.n)return;const d=LK(i.n),s=()=>$("#st"+x);
-if(d){fillF(x,d);if(s())s().textContent="";return}
-if(s())s().textContent="Cerco su Open Food Facts…";
-try{const r=await(await fetch("https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=12&lc=it&fields=product_name,brands,nutriments&search_terms="+encodeURIComponent(i.n))).json();
-OFF[x]=(r.products||[]).filter(p=>p.product_name&&p.nutriments&&p.nutriments["energy-kcal_100g"]!=null).slice(0,6).map(p=>({t:p.product_name+(p.brands?" ("+p.brands.split(",")[0]+")":""),a:["energy-kcal_100g","proteins_100g","carbohydrates_100g","fat_100g"].map(k=>Math.round((+p.nutriments[k]||0)*10)/10).concat([0])}));
-if(s())s().innerHTML=OFF[x].length?`<span class="fl">Scegli il più simile (sono prodotti confezionati, controlla i numeri):</span>`+OFF[x].map((o,y)=>`<button class="l" style="display:block;text-align:left" onclick="useOff(${x},${y})">${esc(o.t)}: ${o.a[0]} kcal</button>`).join(""):"Nessun risultato: inserisci i valori a mano."}
-catch(e){if(s())s().textContent="Ricerca non riuscita: inserisci i valori a mano."}}
-function useOff(x,y){fillF(x,OFF[x][y].a);$("#st"+x).textContent="Valori applicati. Verranno ricordati per questo ricettario."}
+const BIG=new Map(`pasta all'uovo|371|13|74|2.5|0
+pasta integrale|340|13|66|2.5|0
+riso integrale|337|7.5|73|1.8|0
+riso basmati|350|8|77|0.7|0
+farina integrale|339|13|61|2.5|0
+farina di mais|362|8|79|2.7|0
+semola di grano duro|360|11|73|1.5|0
+farina di ceci|387|22|58|6.7|0
+fiocchi d'avena|372|13.5|60|7|0
+couscous|356|12|73|1.5|0
+orzo perlato|352|10|78|1.2|0
+quinoa|368|14|64|6|0
+pane integrale|247|9|45|3|0
+fette biscottate|400|11|73|6|0
+biscotti secchi|435|7|73|12|0
+corn flakes|378|7|84|0.9|0
+pangrattato|395|13|72|5|0
+gnocchi di patate|160|3.5|34|0.5|0
+pasta sfoglia|558|7|45|38|0
+latte intero|64|3.3|4.9|3.6|0
+latte scremato|35|3.4|5|0.2|0
+latte parzialmente scremato|46|3.3|5|1.5|0
+yogurt bianco intero|66|3.8|4.7|3.9|0
+yogurt greco|97|9|4|5|0
+panna da cucina|340|2.2|3.4|35|0
+mascarpone|450|4.8|4|47|0
+ricotta|146|8.8|3.5|10.9|0
+grana padano|384|33|0|28|0
+pecorino|387|26|0|32|0
+gorgonzola|330|19|0|28|0
+fontina|343|25|0|27|0
+provolone|374|26|2|29|0
+feta|264|14|4|21|0
+formaggio spalmabile|250|6|4|23|0
+albume|52|11|0.7|0.2|33
+tuorlo|322|16|3.6|27|18
+coscia di pollo|120|19|0|4.5|0
+petto di tacchino|107|24|0|1|0
+macinato di manzo|215|18.6|0|15|0
+filetto di manzo|150|21|0|7|0
+vitello|110|21|0|2.5|0
+lonza di maiale|150|21|0|7|0
+prosciutto cotto|215|20|1|15|0
+prosciutto crudo|268|27|0|18|0
+bresaola|151|32|0|2.6|0
+pancetta|458|14|0|45|0
+salsiccia|300|15|0|26|0
+mortadella|317|14.6|1|28|0
+speck|303|28|0|21|0
+salmone|185|20|0|12|0
+tonno fresco|140|23|0|5|0
+tonno al naturale|103|25|0|1|0
+tonno sott'olio|192|25|0|10|0
+merluzzo|82|18|0|0.7|0
+orata|96|19|0|2|0
+branzino|97|18|0|2.5|0
+gamberi|85|18|1|1|0
+calamari|80|15|1|1.5|0
+cozze|86|12|3.7|2.2|0
+ceci secchi|316|21|46|6|0
+ceci in scatola|120|7|18|2.6|0
+fagioli secchi|291|21|48|2|0
+fagioli in scatola|95|6|14|0.5|0
+lenticchie secche|352|24|63|1.1|0
+piselli|81|5.4|14|0.4|0
+tofu|76|8|1.9|4.8|0
+pomodori|18|0.9|3.9|0.2|120
+pomodorini|20|1|4|0.2|15
+passata di pomodoro|30|1.5|5|0.2|0
+concentrato di pomodoro|82|4.8|15|0.5|0
+scalogno|72|2.5|17|0.1|30
+peperoni|31|1|6|0.3|150
+melanzane|24|1.1|4.5|0.4|250
+zucca|26|1|6.5|0.1|0
+spinaci|23|2.9|3.6|0.4|0
+broccoli|34|2.8|7|0.4|0
+cavolfiore|25|1.9|5|0.3|0
+cavolo cappuccio|25|1.3|6|0.1|0
+lattuga|15|1.4|2.9|0.2|0
+rucola|25|2.6|3.7|0.7|0
+cetrioli|15|0.7|3.6|0.1|200
+sedano|16|0.7|3|0.2|0
+finocchi|31|1.2|7.3|0.2|0
+funghi champignon|22|3.1|3.3|0.3|0
+porri|61|1.5|14|0.3|0
+asparagi|20|2.2|3.9|0.1|0
+fagiolini|31|1.8|7|0.2|0
+carciofi|47|3.3|11|0.2|0
+barbabietola|43|1.6|10|0.2|0
+radicchio|23|1.4|4.5|0.3|0
+bietole|19|1.8|3.7|0.2|0
+patate dolci|86|1.6|20|0.1|0
+mais dolce|86|3.3|19|1.4|0
+olive|115|0.8|6|11|0
+capperi|23|2.4|4.9|0.9|0
+zenzero|80|1.8|18|0.8|0
+prezzemolo|36|3|6.3|0.8|0
+rosmarino|131|3.3|21|5.9|0
+origano secco|265|9|69|4.3|0
+peperoncino|40|1.9|9|0.4|0
+mela|52|0.3|14|0.2|180
+pera|57|0.4|15|0.1|180
+banana|89|1.1|23|0.3|120
+arancia|47|0.9|12|0.1|180
+limone|29|1.1|9|0.3|100
+succo di limone|22|0.4|6.9|0.2|0
+fragole|32|0.7|7.7|0.3|0
+uva|69|0.7|18|0.2|0
+pesca|39|0.9|10|0.3|150
+albicocche|48|1.4|11|0.4|35
+ananas|50|0.5|13|0.1|0
+kiwi|61|1.1|15|0.5|75
+mirtilli|57|0.7|14|0.3|0
+lamponi|52|1.2|12|0.7|0
+avocado|160|2|9|15|150
+datteri|282|2.5|75|0.4|0
+fichi secchi|249|3.3|64|0.9|0
+uvetta|299|3.1|79|0.5|0
+mandorle|579|21|22|50|0
+noci|654|15|14|65|0
+nocciole|628|15|17|61|0
+pistacchi|560|20|28|45|0
+pinoli|673|14|13|68|0
+anacardi|553|18|30|44|0
+arachidi|567|26|16|49|0
+semi di sesamo|573|18|23|50|0
+semi di girasole|584|21|20|51|0
+semi di chia|486|17|42|31|0
+burro di arachidi|588|25|20|50|0
+olio d'oliva|899|0|0|99.9|0
+olio di semi|900|0|0|100|0
+maionese|680|1|1|75|0
+aceto balsamico|88|0.5|17|0|0
+aceto di vino|20|0|0.6|0|0
+salsa di soia|53|8|5|0|0
+senape|66|4|6|4|0
+ketchup|101|1|25|0.1|0
+miele|304|0.3|82|0|0
+marmellata|250|0.4|62|0.1|0
+nutella|539|6.3|57.5|30.9|0
+cioccolato fondente|546|4.9|61|31|0
+cacao amaro|228|19.6|58|13.7|0
+zucchero a velo|390|0|100|0|0
+zucchero di canna|380|0|98|0|0
+amido di mais|381|0.3|91|0.1|0
+vino bianco|70|0.1|1|0|0
+vino rosso|75|0.1|0.5|0|0
+birra|43|0.5|3.6|0|0
+acqua|0|0|0|0|0`.split("\n").map(l=>{const p=l.split("|");return[p[0],p.slice(1).map(Number)]}));
+const ACR={},nz=s=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,""),cap=s=>s.charAt(0).toUpperCase()+s.slice(1);
+const ALL=()=>{const m=new Map();[...BIG].forEach(([n,a])=>m.set(n,{n,a,s:1}));Object.entries(DB).forEach(([n,a])=>m.set(n,{n,a,s:1}));Object.entries(KN).forEach(([n,a])=>m.set(n,{n,a,s:0}));return[...m.values()]};
+function ac(x,v){const i=draft.ings[x];i.n=v;const d=$("#ac"+x),t=nz(v).split(/\s+/).filter(Boolean);if(!t.length){d.innerHTML="";return}
+const L=ALL().map(e=>{const k=nz(e.n);if(!t.every(w=>k.includes(w)))return null;const ws=k.split(/[\s,()']+/);return{e,sc:(e.s?0:-2000)+(k.startsWith(t[0])?0:ws.some(w=>w.startsWith(t[0]))?1000:2000)+k.length}}).filter(Boolean).sort((a,b)=>a.sc-b.sc).slice(0,7);
+ACR[x]=L.map(o=>o.e);
+d.innerHTML=ACR[x].map((e,y)=>`<button class="ai" onclick="sel(${x},${y})"><span>${esc(cap(e.n))}${e.s?"":" ★"}</span><span class="mute">${fmt(e.a[0])} kcal</span></button>`).join("")+(v.trim().length>1?`<button class="ai on" onclick="web(${x})"><span>🌐 Cerca tra i prodotti confezionati</span></button>`:"")}
+function sel(x,y){const e=ACR[x][y],i=draft.ings[x];i.n=cap(e.n);fillF(x,e.a);const inp=$("#ni"+x);if(inp)inp.value=i.n;$("#ac"+x).innerHTML="";$("#st"+x).textContent=""}
+function pick(x,v){const i=draft.ings[x];i.n=v.trim();const d=LK(i.n);if(d&&!(i.k||i.p||i.c||i.f))fillF(x,d)}
+async function web(x){const v=(draft.ings[x].n||"").trim(),d=$("#ac"+x);if(v.length<2)return;d.innerHTML=`<p class="mute" style="padding:10px">Cerco “${esc(v)}”…</p>`;
+try{const r=await(await fetch("https://world.openfoodfacts.org/cgi/search.pl?search_simple=1&action=process&json=1&page_size=15&lc=it&fields=product_name,brands,nutriments&search_terms="+encodeURIComponent(v))).json();
+const K=["energy-kcal_100g","proteins_100g","carbohydrates_100g","fat_100g"];
+ACR[x]=(r.products||[]).filter(p=>p.product_name&&p.nutriments&&p.nutriments[K[0]]!=null).slice(0,8).map(p=>({t:p.product_name+(p.brands?" ("+p.brands.split(",")[0]+")":""),a:K.map(k=>Math.round((+p.nutriments[k]||0)*10)/10).concat([0])}));
+d.innerHTML=ACR[x].length?ACR[x].map((e,y)=>`<button class="ai" onclick="selw(${x},${y})"><span>${esc(e.t)}</span><span class="mute">${e.a[0]} kcal</span></button>`).join(""):`<p class="mute" style="padding:10px">Nessun prodotto trovato: inserisci i valori a mano.</p>`}
+catch(e){d.innerHTML=`<p class="mute" style="padding:10px">Ricerca online non riuscita: inserisci i valori a mano.</p>`}}
+function selw(x,y){const e=ACR[x][y];fillF(x,e.a);$("#ac"+x).innerHTML="";$("#st"+x).textContent="Valori presi da: "+e.t+". Controlla i numeri."}
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".acl,.ni"))document.querySelectorAll(".acl").forEach(d=>d.innerHTML="")});
 async function saveR(){const d=draft;if(!d.name.trim())return msg("Dai un nome alla ricetta.");
 d.ings=d.ings.filter(i=>i.n.trim());d.steps=d.steps.filter(s=>s.t.trim());msg("Salvo…",1);
 const row={cookbook_id:C.id,name:d.name.trim(),category:d.cat,servings:d.servings};let id=d.id;
