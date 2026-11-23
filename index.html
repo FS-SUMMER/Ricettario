@@ -89,7 +89,7 @@ const msg=(t,ok)=>{const e=$("#msg");e.className=ok?"mute":"warn";e.textContent=
 const fail=e=>{msg("Errore: "+(e.message||e));console.error(e)};
 function grams(i){const q=+i.q||0;return i.u==="pezzo"?q*(+i.pc||0):q*(UN[i.u]||1)}
 function nutri(r){const t={k:0,p:0,c:0,f:0};r.ings.forEach(i=>{const g=grams(i)/100;t.k+=g*i.k;t.p+=g*i.p;t.c+=g*i.c;t.f+=g*i.f});const s=r.servings||1;return{k:t.k/s,p:t.p/s,c:t.c/s,f:t.f/s}}
-const fromDb=r=>({id:r.id,name:r.name,cat:r.category,servings:r.servings,
+const fromDb=r=>({id:r.id,name:r.name,cat:r.category,gf:!!r.gluten_free,servings:r.servings,
 ings:[...r.recipe_ingredients].sort((a,b)=>a.position-b.position).map(i=>({n:i.name,q:+i.quantity,u:i.unit,k:+i.kcal,p:+i.protein,c:+i.carbs,f:+i.fat,pc:+i.piece_grams})),
 steps:[...r.recipe_steps].sort((a,b)=>a.position-b.position).map(s=>({t:s.body,m:s.minutes}))});
 /* ---------- avvio e accesso ---------- */
@@ -125,10 +125,10 @@ const{error}=await sb.from("cookbooks").insert({name:n});if(error)return fail(er
 async function addMember(){const e=$("#me").value.trim();if(!e)return msg("Scrivi l’email della persona.");
 const{error}=await sb.rpc("add_member_by_email",{cb:C.id,member_email:e,member_role:$("#mr").value});
 error?fail(error):msg("Fatto: "+e+" ora vede questo ricettario.",1)}
-let FAV=new Set();
+let FAV=new Set(),GF=false;
 const EM={Antipasto:"🥗",Primo:"🍝",Secondo:"🥩",Contorno:"🥦",Dolce:"🍰",Altro:"🍴"};
 const mins=r=>r.steps.reduce((a,s)=>a+(s.m||0),0);
-function card(r,m){const t=mins(r);return`<div class="rcw"><button class="rc" onclick="go('view','${r.id}')"><b>${esc(r.name)}</b><div class="cm"><span class="tag">${EM[r.cat]||""} ${r.cat}</span><span class="mute">${t?t+" min, ":""}${r.servings} porz.</span><span class="kc">${fmt(nutri(r).k)} kcal/pers.</span></div>${m&&m.length?`<span class="mute">Contiene: ${esc(m.join(", "))}</span>`:""}</button><button class="star" aria-label="Preferito" aria-pressed="${FAV.has(r.id)}" onclick="fav('${r.id}')">${FAV.has(r.id)?"★":"☆"}</button></div>`}
+function card(r,m){const t=mins(r);return`<div class="rcw"><button class="rc" onclick="go('view','${r.id}')"><b>${esc(r.name)}</b><div class="cm"><span class="tag">${EM[r.cat]||""} ${r.cat}</span>${r.gf?`<span class="tag">🌾 Senza glutine</span>`:""}<span class="mute">${t?t+" min, ":""}${r.servings} porz.</span><span class="kc">${fmt(nutri(r).k)} kcal/pers.</span></div>${m&&m.length?`<span class="mute">Contiene: ${esc(m.join(", "))}</span>`:""}</button><button class="star" aria-label="Preferito" aria-pressed="${FAV.has(r.id)}" onclick="fav('${r.id}')">${FAV.has(r.id)?"★":"☆"}</button></div>`}
 function fav(id){FAV.has(id)?FAV.delete(id):FAV.add(id);try{localStorage.setItem("fav-"+C.id,JSON.stringify([...FAV]))}catch(e){}view==="list"?fillList():render()}
 function tabs(){const t=$("#tabs"),show=C&&["list","view","mem","foods","food"].includes(view);t.style.display=show?"flex":"none";if(!show)return;
 const on=v=>v==="mem"?view==="mem":v==="foods"?view==="foods"||view==="food":v==="list"&&(view==="list"||view==="view");
@@ -143,19 +143,19 @@ function vLogin(){$("#app").innerHTML=`<div style="text-align:center;margin:20px
 <button class="p" onclick="login()">Accedi</button><button class="l" onclick="reset()">Password dimenticata o primo accesso?</button></div>`}
 function vPw(){$("#app").innerHTML=`<h1>Scegli una password</h1><div class="card g"><input id="np" type="password" autocomplete="new-password" placeholder="Nuova password (almeno 8 caratteri)" onkeydown="if(event.key==='Enter')setPw()"><button class="p" onclick="setPw()">Salva e continua</button></div>`}
 function vNew(){$("#app").innerHTML=`<div style="text-align:center"><img src="icon-192.png" alt="" width="96" height="96" style="border-radius:24px"></div><h2>Crea un ricettario</h2><p class="mute">Potrai poi invitare altre persone a condividerlo.</p><div class="card g"><input id="cn" placeholder="Es. Ricette di famiglia"><button class="p" onclick="newCb()">Crea</button>${CB.length?`<button onclick="go('list')">Annulla</button>`:`<button class="l" onclick="out()">Esci</button>`}</div>`}
-function vMem(){$("#app").innerHTML=`<h2>Condividi “${esc(C.name)}”</h2>`+(C.role==="owner"?`<p class="mute">1. In Supabase, vai su Authentication → Users → Invite user e invita la persona.<br>2. Scrivi qui la stessa email e scegli il ruolo.</p><div class="card g"><input id="me" type="email" placeholder="Email della persona"><select id="mr"><option value="editor">Può modificare</option><option value="reader">Può solo leggere</option></select><button class="p" onclick="addMember()">Aggiungi al ricettario</button></div>`:`<p class="mute">Solo il proprietario può aggiungere persone.</p>`)+`<h3>Il tuo account</h3><div class="card g">${CB.length>1?`<select onchange="openCb(this.value)">${CB.map(c=>`<option value="${c.id}" ${c.id===C.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`:""}<button onclick="go('newcb')">Crea un nuovo ricettario</button><button class="d" onclick="out()">Esci dall’account</button></div><p class="mute" style="text-align:center">Versione 17 novembre, alimenti modificabili</p>`}
+function vMem(){$("#app").innerHTML=`<h2>Condividi “${esc(C.name)}”</h2>`+(C.role==="owner"?`<p class="mute">1. In Supabase, vai su Authentication → Users → Invite user e invita la persona.<br>2. Scrivi qui la stessa email e scegli il ruolo.</p><div class="card g"><input id="me" type="email" placeholder="Email della persona"><select id="mr"><option value="editor">Può modificare</option><option value="reader">Può solo leggere</option></select><button class="p" onclick="addMember()">Aggiungi al ricettario</button></div>`:`<p class="mute">Solo il proprietario può aggiungere persone.</p>`)+`<h3>Il tuo account</h3><div class="card g">${CB.length>1?`<select onchange="openCb(this.value)">${CB.map(c=>`<option value="${c.id}" ${c.id===C.id?"selected":""}>${esc(c.name)}</option>`).join("")}</select>`:""}<button onclick="go('newcb')">Crea un nuovo ricettario</button><button class="d" onclick="out()">Esci dall’account</button></div><p class="mute" style="text-align:center">Versione 17 novembre, senza glutine</p>`}
 /* ---------- elenco ---------- */
 function vList(){$("#app").innerHTML=`<div class="hero"><img src="icon-192.png" alt=""><div><h1>${esc(C.name)}</h1><span class="mute">${R.length} ${R.length===1?"ricetta":"ricette"}</span></div></div>
 <div class="row" style="margin:14px 0 10px"><input id="q" type="search" style="flex:1;min-width:0" value="${esc(q)}" placeholder="Cerca per nome o ingrediente, es. zucca" oninput="q=this.value;fillList()">${can()?`<button class="p" onclick="newR()">+ Ricetta</button>`:""}</div><div class="chips" id="ch"></div><div id="rl"></div>`;fillList()}
 function fillList(){const t=q.trim().toLowerCase();
-$("#ch").innerHTML=["Tutte",...PORT].map(c=>`<button class="${c===fc?"p":""}" onclick="fc='${c}';fillList()">${c==="Tutte"?"✨ Tutte":EM[c]+" "+c}</button>`).join("");
-const L=R.filter(r=>(fc==="Tutte"||r.cat===fc)&&(!t||r.name.toLowerCase().includes(t)||r.ings.some(i=>i.n.toLowerCase().includes(t))));
+$("#ch").innerHTML=["Tutte",...PORT].map(c=>`<button class="${c===fc?"p":""}" onclick="fc='${c}';fillList()">${c==="Tutte"?"✨ Tutte":EM[c]+" "+c}</button>`).join("")+`<button class="${GF?"p":""}" aria-pressed="${GF}" onclick="GF=!GF;fillList()">🌾 Senza glutine</button>`;
+const L=R.filter(r=>(fc==="Tutte"||r.cat===fc)&&(!GF||r.gf)&&(!t||r.name.toLowerCase().includes(t)||r.ings.some(i=>i.n.toLowerCase().includes(t))));
 const fv=!t&&fc==="Tutte"?L.filter(r=>FAV.has(r.id)):[];
 $("#rl").innerHTML=(fv.length?`<h3>⭐ I tuoi preferiti</h3>`+fv.map(r=>card(r)).join("")+`<h3>Tutte le ricette</h3>`:"")+(L.length?L.map(r=>card(r,t?r.ings.filter(i=>i.n.toLowerCase().includes(t)).map(i=>i.n):[])).join(""):(R.length?`<p class="mute">Nessuna ricetta trovata. Prova con un altro ingrediente o un’altra portata.</p>`:`<div class="card" style="text-align:center"><img src="icon-192.png" alt="" width="96" height="96" style="border-radius:24px"><h3>Il ricettario è ancora vuoto</h3><p class="mute">Aggiungi la prima ricetta: il topolino cuoco è pronto ad aiutarti.</p>${can()?`<button class="p" onclick="newR()">Aggiungi la prima ricetta</button>`:""}</div>`))}
 /* ---------- dettaglio e cucina ---------- */
 function vView(){const r=R.find(x=>x.id===cur);if(!r)return go("list");const n=nutri(r),f=sc/r.servings;let miss=false;
 const li=r.ings.map(i=>{if(i.u==="pezzo"&&!i.pc||!(i.k||i.p||i.c||i.f)&&i.n.toLowerCase()!=="sale")miss=true;return`<li><span>${esc(i.n)}</span><b>${fmt(i.q*f)} ${un(i.u,i.q*f)}</b></li>`}).join("");
-$("#app").innerHTML=`<button class="l" onclick="go('list')">Tutte le ricette</button><div class="row sp"><h2>${esc(r.name)}</h2><button class="star" aria-label="Preferito" aria-pressed="${FAV.has(r.id)}" onclick="fav('${r.id}')">${FAV.has(r.id)?"★":"☆"}</button></div><div class="cm"><span class="tag">${EM[r.cat]||""} ${r.cat}</span>${mins(r)?`<span class="mute">${mins(r)} min in totale</span>`:""}</div>
+$("#app").innerHTML=`<button class="l" onclick="go('list')">Tutte le ricette</button><div class="row sp"><h2>${esc(r.name)}</h2><button class="star" aria-label="Preferito" aria-pressed="${FAV.has(r.id)}" onclick="fav('${r.id}')">${FAV.has(r.id)?"★":"☆"}</button></div><div class="cm"><span class="tag">${EM[r.cat]||""} ${r.cat}</span>${r.gf?`<span class="tag">🌾 Senza glutine</span>`:""}${mins(r)?`<span class="mute">${mins(r)} min in totale</span>`:""}</div>
 <div class="row sp" style="margin:14px 0"><span>Per quante persone?</span><div class="stepper"><button aria-label="Meno" onclick="sc=Math.max(1,sc-1);render()">−</button><b>${sc}</b><button aria-label="Più" onclick="sc++;render()">+</button></div></div>
 <h3>Ingredienti</h3><div class="card"><ul class="ing">${li}</ul></div>
 <h3>Valori nutrizionali per persona</h3><div class="card"><div class="nut"><div class="k"><b>${fmt(n.k)}</b>kcal</div><div><b>${fmt(n.p)} g</b>proteine</div><div><b>${fmt(n.c)} g</b>carboidrati</div><div><b>${fmt(n.f)} g</b>grassi</div></div>${miss?'<p class="warn">Per alcuni ingredienti mancano valori o peso: il calcolo è incompleto.</p>':""}</div>
@@ -171,13 +171,13 @@ function stp(d){cs+=d;clearInterval(tm.id);tm={id:null,left:0};render()}
 function tgl(total){if(tm.id){clearInterval(tm.id);tm={id:null,left:0};return render()}tm.left=total;tm.id=setInterval(()=>{tm.left--;const e=$("#tv");if(e)e.textContent=tf(Math.max(0,tm.left));if(tm.left<=0){clearInterval(tm.id);tm.id=null;if(e)e.textContent="Tempo scaduto!";const b=$("#tb");if(b)b.textContent="Avvia timer";try{navigator.vibrate&&navigator.vibrate([300,150,300])}catch(x){}}},1000);render()}
 /* ---------- modifica ---------- */
 const blank=()=>({n:"",q:0,u:"g",k:0,p:0,c:0,f:0,pc:0});
-function newR(){draft={name:"",cat:"Primo",servings:4,ings:[blank()],steps:[{t:"",m:0}],isNew:true};go("edit")}
+function newR(){draft={name:"",cat:"Primo",gf:false,servings:4,ings:[blank()],steps:[{t:"",m:0}],isNew:true};go("edit")}
 function editR(){draft=JSON.parse(JSON.stringify(R.find(x=>x.id===cur)));go("edit")}
 async function delR(){if(!confirm("Eliminare questa ricetta?"))return;const{error}=await sb.from("recipes").delete().eq("id",cur);if(error)return fail(error);if(await loadRecipes())go("list")}
 function vEdit(){const d=draft;$("#app").innerHTML=`<h2>${d.isNew?"Nuova ricetta":"Modifica ricetta"}</h2>
 <p class="fl">Nome</p><input value="${esc(d.name)}" oninput="draft.name=this.value" placeholder="Es. Lasagne">
 <p class="fl">Portata</p><select onchange="draft.cat=this.value">${PORT.map(c=>`<option ${c===d.cat?"selected":""}>${c}</option>`).join("")}</select>
-<p class="fl">Porzioni della ricetta</p><input type="number" min="1" value="${d.servings}" oninput="draft.servings=+this.value||1">
+<label class="row" style="margin:12px 0;gap:10px"><input type="checkbox" style="width:auto" ${d.gf?"checked":""} onchange="draft.gf=this.checked">🌾 Senza glutine</label><p class="fl">Porzioni della ricetta</p><input type="number" min="1" value="${d.servings}" oninput="draft.servings=+this.value||1">
 <h3>Ingredienti</h3>${d.ings.map((i,x)=>`<div class="er"><div class="acl" id="ac${x}"></div><div class="g g3"><input class="ni" id="ni${x}" autocomplete="off" value="${esc(i.n)}" placeholder="Cerca ingrediente…" oninput="ac(${x},this.value)" onchange="pick(${x},this.value)"><input type="number" step="any" value="${i.q||""}" placeholder="Quantità" oninput="draft.ings[${x}].q=+this.value">
 <select onchange="draft.ings[${x}].u=this.value">${["g","ml","cucchiaio","cucchiaino","tazza","pezzo"].map(u=>`<option ${u===i.u?"selected":""}>${u}</option>`).join("")}</select><button class="d" aria-label="Rimuovi" onclick="draft.ings.splice(${x},1);render()">✕</button></div>
 <p class="fl" style="margin:8px 0 2px">Valori per 100 g (si compilano da soli)</p><div class="g g5">${[["k","kcal"],["p","prot."],["c","carb."],["f","grassi"],["pc","g/pezzo"]].map(([k,l])=>`<div><label>${l}</label><input type="number" step="any" id="f${x}${k}" value="${i[k]||0}" oninput="draft.ings[${x}].${k}=+this.value"></div>`).join("")}</div><div id="st${x}" class="mute"></div></div>`).join("")}
@@ -375,8 +375,11 @@ async function delFood(){const n=FD.n;if(!confirm(FD.orig?"Tornare ai valori ori
 const{error}=await sb.from("known_ingredients").delete().eq("cookbook_id",C.id).eq("name",n);if(error)return fail(error);delete KN[n];go("foods");msg("Fatto.",1)}
 document.addEventListener("pointerdown",e=>{if(!e.target.closest(".acl,.ni"))document.querySelectorAll(".acl").forEach(d=>d.innerHTML="")});
 async function saveR(){const d=draft;if(!d.name.trim())return msg("Dai un nome alla ricetta.");
-d.ings=d.ings.filter(i=>i.n.trim());d.steps=d.steps.filter(s=>s.t.trim());msg("Salvo…",1);
-const row={cookbook_id:C.id,name:d.name.trim(),category:d.cat,servings:d.servings};let id=d.id;
+d.ings=d.ings.filter(i=>i.n.trim());d.steps=d.steps.filter(s=>s.t.trim());
+if(d.gf){const bad=d.ings.filter(i=>{const k=nz(i.n);return/\b(pasta|farina|pane|couscous|orzo|semola|biscott|pangrattato|gnocchi|sfoglia|fette biscottate|corn flakes|birra|soia|seitan|farro|segale|avena)/.test(k)&&!/(ceci|mais|riso|mandorl|castagn|saraceno|senza glutine)/.test(k)}).map(i=>i.n);
+if(bad.length&&!confirm("Hai segnato la ricetta come senza glutine, ma contiene: "+bad.join(", ")+". Se usi versioni senza glutine va bene: salvo comunque?"))return}
+msg("Salvo…",1);
+const row={cookbook_id:C.id,name:d.name.trim(),category:d.cat,gluten_free:!!d.gf,servings:d.servings};let id=d.id;
 if(d.isNew){const{data,error}=await sb.from("recipes").insert(row).select("id").single();if(error)return fail(error);id=data.id}
 else{const{error}=await sb.from("recipes").update(row).eq("id",id);if(error)return fail(error);
 await sb.from("recipe_ingredients").delete().eq("recipe_id",id);await sb.from("recipe_steps").delete().eq("recipe_id",id)}
